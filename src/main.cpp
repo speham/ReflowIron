@@ -263,17 +263,21 @@ void executeActualState()
 void loop()
 {
   temp_now = thermocouple.readCelsius();
+  Serial.printf("2 - %i\n", temp_now);
   temp_poti = readPotiTemeratur();
 
   refreshDisplay();
 
-  switch (detectButtonClick())
+  ButtonClick cl = detectButtonClick();
+  switch (cl)
   {
   case LONG_CLICK:
     switchOff();
     return;
   case SHORT_CLICK:
     nextState();
+    break;
+  default:
     break;
   }
 
