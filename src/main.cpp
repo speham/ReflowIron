@@ -7,10 +7,15 @@
 #include "max6675.h"
 
 Adafruit_SSD1306 display(0);
-MAX6675 thermocouple(14 /*thermoCLK*/, 13 /*thermoCS*/, 12 /*thermoDO*/);
 
-const int button = 2;
-const int solidstate = 15;
+int thermoDO = D6;
+int thermoCS = D7;
+int thermoCLK = D5;
+MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);
+
+
+const int button = D4;
+const int solidstate = D8;
 const int poti = A0;
 const int temp_preheat = 150;
 const int temp_reflow = 240;
