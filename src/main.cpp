@@ -6,13 +6,17 @@
 #include <Adafruit_SSD1306.h>
 #include "max6675.h"
 
-Adafruit_SSD1306 display(0);
+#define SCREEN_WIDTH 128  // OLED display width, in pixels
+#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 int thermoDO = D6;
 int thermoCS = D7;
 int thermoCLK = D5;
 MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);
-
 
 const int button = D4;
 const int solidstate = D8;
@@ -121,8 +125,6 @@ void loop()
   Serial.print("temp_poti=");
   Serial.println(temp_poti);
 
-
-
   if (temp_poti != temp_poti_old)
   {
     long v = millis();
@@ -133,6 +135,7 @@ void loop()
     display.setTextSize(2);
     while (millis() < v + 2000)
     {
+      yield();
       temp_poti = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
       if (temp_poti > temp_poti_old + 1 || temp_poti < temp_poti_old - 1)
       {
@@ -158,6 +161,8 @@ void loop()
     long c = millis();
     while (digitalRead(button) == 0)
     {
+      yield();
+
       if (millis() > c + 1500)
       {
         digitalWrite(solidstate, LOW);
@@ -169,7 +174,10 @@ void loop()
         display.println("OFF");
         display.display();
         while (digitalRead(button) == 0)
+        {
+          yield();
           delay(1);
+        }
         return;
       }
     }
