@@ -7,7 +7,7 @@
 #include "max6675.h"
 
 #define SCREEN_WIDTH 128  // OLED display width, in pixels
-#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
@@ -93,37 +93,49 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println("setup: will init ports");
-
   pinMode(button, INPUT);
   pinMode(solidstate, OUTPUT);
   digitalWrite(solidstate, LOW);
 
-  Serial.println("setup: will init display now ...");
-  display.begin();
-  //display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-
-  Serial.println("setup: will clear display now ...");
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
   display.display();
 
+  Serial.print("display.width(): ");
+  Serial.print(display.width());
+  Serial.print("display.height(): ");
+  Serial.println(display.height());
+
+// text display tests
+display.setTextSize(1);
+display.setTextColor(WHITE);
+display.setCursor(31,8);
+display.println("123456789AB");
+display.setCursor(31,16);
+display.println("123456789AB");
+display.setCursor(31,24);
+display.println("123456789AB");
+display.display();
+delay(10000);
+display.clearDisplay();
+  
+  /*   
   display.fillScreen(WHITE);
   display.setTextSize(1);
   display.setCursor(X(1, 6), Y(1, 0.1));
   display.println("REFLOW");
-
-  delay(3000);
-  Serial.println("setup: display done");
+ */
 }
 
 void loop()
 {
   temp_now = thermocouple.readCelsius();
-  Serial.print("temp_now=");
-  Serial.println(temp_now);
+  // Serial.print("temp_now=");
+  // Serial.println(temp_now);
 
   temp_poti = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
-  Serial.print("temp_poti=");
-  Serial.println(temp_poti);
+  // Serial.print("temp_poti=");
+  // Serial.println(temp_poti);
 
   if (temp_poti != temp_poti_old)
   {
@@ -151,7 +163,7 @@ void loop()
 
   if (millis() > t + 200 || millis() < t)
   {
-    // PrintScreen(state[state_now], temp_next, temp_now, time_count, perc);
+    PrintScreen(state[state_now], temp_next, temp_now, time_count, perc);
     t = millis();
   }
 
