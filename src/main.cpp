@@ -6,7 +6,7 @@
 #include <Adafruit_SSD1306.h>
 #include "max6675.h"
 
-#define SCREEN_WIDTH 128  // OLED display width, in pixels
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
@@ -89,55 +89,11 @@ void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percent
   display.display();
 }
 
-void setup()
+int readPotiTemeratur()
 {
-  Serial.begin(115200);
-  Serial.println("setup: will init ports");
-  pinMode(button, INPUT);
-  pinMode(solidstate, OUTPUT);
-  digitalWrite(solidstate, LOW);
+  int potiTemperatur = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
 
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  display.clearDisplay();
-  display.display();
-
-  Serial.print("display.width(): ");
-  Serial.print(display.width());
-  Serial.print("display.height(): ");
-  Serial.println(display.height());
-
-// text display tests
-display.setTextSize(1);
-display.setTextColor(WHITE);
-display.setCursor(31,8);
-display.println("123456789AB");
-display.setCursor(31,16);
-display.println("123456789AB");
-display.setCursor(31,24);
-display.println("123456789AB");
-display.display();
-delay(10000);
-display.clearDisplay();
-  
-  /*   
-  display.fillScreen(WHITE);
-  display.setTextSize(1);
-  display.setCursor(X(1, 6), Y(1, 0.1));
-  display.println("REFLOW");
- */
-}
-
-void loop()
-{
-  temp_now = thermocouple.readCelsius();
-  // Serial.print("temp_now=");
-  // Serial.println(temp_now);
-
-  temp_poti = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
-  // Serial.print("temp_poti=");
-  // Serial.println(temp_poti);
-
-  if (temp_poti != temp_poti_old)
+  if (potiTemperatur != temp_poti_old)
   {
     long v = millis();
     display.fillScreen(WHITE);
@@ -148,18 +104,40 @@ void loop()
     while (millis() < v + 2000)
     {
       yield();
-      temp_poti = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
-      if (temp_poti > temp_poti_old + 1 || temp_poti < temp_poti_old - 1)
+      potiTemperatur = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
+      if (potiTemperatur > temp_poti_old + 1 || potiTemperatur < temp_poti_old - 1)
       {
         display.setCursor(X(2, 3), Y(2, 0.5));
-        display.println(String(temp_poti));
+        display.println(String(potiTemperatur));
         display.display();
-        temp_poti_old = temp_poti;
+        temp_poti_old = potiTemperatur;
+        Serial.printf("Neuer Sollwert: %i °C\n", potiTemperatur);
         v = millis();
       }
     }
-    temp_poti_old = temp_poti;
+    temp_poti_old = potiTemperatur;
   }
+  
+  return potiTemperatur;
+}
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println("setup starts noww ...");
+  pinMode(button, INPUT);
+  pinMode(solidstate, OUTPUT);
+  digitalWrite(solidstate, LOW);
+
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+  display.display();
+}
+
+void loop()
+{
+  temp_now = thermocouple.readCelsius();
+  temp_poti = readPotiTemeratur();
 
   if (millis() > t + 200 || millis() < t)
   {
