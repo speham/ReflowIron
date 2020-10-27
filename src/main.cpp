@@ -24,12 +24,28 @@ const int poti = A0;
 const int temp_preheat = 150;
 const int temp_reflow = 240;
 
+typedef enum
+{
+  NO_CLICK,
+  SHORT_CLICK,
+  LONG_CLICK
+} ButtonClick;
+
+typedef enum
+{
+  OFF = 0,
+  PREHEAT = 1,
+  REFLOW = 2,
+  COOLING = 3
+} State;
+
 int temp_now = 0;
 int temp_next = 0;
 int temp_poti = 0;
 int temp_poti_old = 0;
 String state[] = {"OFF", "PREHEAT", "REFLOW", "COOLING"};
 int state_now = 0;
+State actualState = OFF;
 
 int time_count = 0;
 int perc = 0;
@@ -37,13 +53,6 @@ int offset = 0;
 
 long millisDisplayRefresh = millis();
 long t_solder = millis();
-
-typedef enum
-{
-  NO_CLICK,
-  SHORT_CLICK,
-  LONG_CLICK
-} ButtonClick;
 
 int X(int textgroesse, int n)
 {
@@ -154,6 +163,8 @@ ButtonClick detectButtonClick()
 {
   if (digitalRead(button) == 0)
   {
+    Serial.println("clicked");
+
     delay(100);
     long milSec = millis();
     while (digitalRead(button) == 0)
@@ -164,6 +175,8 @@ ButtonClick detectButtonClick()
         return LONG_CLICK;
       }
     }
+    Serial.println("shortclicked");
+
     return SHORT_CLICK;
   }
 
@@ -218,9 +231,7 @@ void loop()
 
   refreshDisplay();
 
-  ButtonClick clickInfo = detectButtonClick();
-
-  switch (clickInfo)
+  switch (detectButtonClick())
   {
   case LONG_CLICK:
     switchOff();
