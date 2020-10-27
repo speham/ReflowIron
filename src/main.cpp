@@ -44,7 +44,7 @@ int temp_next = 0;
 int temp_poti = 0;
 int temp_poti_old = 0;
 String state[] = {"OFF", "PREHEAT", "REFLOW", "COOLING"};
-int state_now = 0;
+// int state_now = 0;
 State actualState = OFF;
 
 int time_count = 0;
@@ -141,7 +141,7 @@ void refreshDisplay()
 {
   if (millis() > millisDisplayRefresh + 200 || millis() < millisDisplayRefresh)
   {
-    PrintScreen(state[state_now], temp_next, temp_now, time_count, perc);
+    PrintScreen(state[actualState], temp_next, temp_now, time_count, perc);
     millisDisplayRefresh = millis();
   }
 }
@@ -187,7 +187,7 @@ void switchOff()
 {
   Serial.println("Long Button Click detected - Switch OFF now.\n");
   digitalWrite(solidstate, LOW);
-  state_now = 0;
+  actualState = OFF;
   display.fillScreen(WHITE);
   display.setTextColor(BLACK);
   display.setTextSize(2);
@@ -203,25 +203,69 @@ void switchOff()
 
 void nextState()
 {
-
   t_solder = millis();
-  perc = 0,
-  state_now++;
-  if (state_now == 0)
-    temp_next = 0;
-  else if (state_now == 1)
-    temp_next = temp_preheat;
-  else if (state_now == 2)
-    temp_next = temp_poti;
-  else if (state_now == 3)
-    temp_next = 0;
-  else if (state_now == 4)
+  perc = 0;
+
+  switch (actualState)
   {
-    state_now = 0;
+  case OFF:
+    actualState = PREHEAT;
+    temp_next = temp_preheat;
+    break;
+  case PREHEAT:
+    actualState = REFLOW;
+    temp_next = temp_poti;
+    break;
+  case REFLOW:
+    actualState = COOLING;
     temp_next = 0;
+    break;
+  case COOLING:
+    actualState = OFF;
+    temp_next = 0;
+    break;
   }
+
   Serial.print("Short Button Click detected - Switch to State ");
-  Serial.println(state[state_now]);
+  Serial.println(state[actualState]);
+}
+
+void executeActualState()
+{
+  switch (actualState)
+  {
+  case PREHEAT:
+    regulate_temp(temp_now, temp_next);
+    perc = int((float(temp_now) / float(temp_next)) * 100.00);
+    break;
+  case REFLOW:
+    regulate_temp(temp_now, temp_next);
+    perc = int((float(temp_now) / float(temp_next)) * 100.00);
+    if (perc >= 100)
+    {
+      actualState = COOLING;
+      t_solder = millis();
+      perc = 0;
+      temp_next = 0;
+    }
+    break;
+    {
+    case COOLING:
+      digitalWrite(solidstate, LOW);
+      time_count = int((t_solder + 60000 - millis()) / 1000);
+      if (time_count <= 0)
+      {
+        actualState = OFF;
+      }
+      break;
+    default:
+      digitalWrite(solidstate, LOW);
+      time_count = 0;
+      break;
+    }
+
+    delay(30);
+  }
 }
 
 void loop()
@@ -241,36 +285,5 @@ void loop()
     break;
   }
 
-  if (state_now == 1)
-  { //PREHEAT
-    regulate_temp(temp_now, temp_next);
-    perc = int((float(temp_now) / float(temp_next)) * 100.00);
-  }
-  else if (state_now == 2)
-  { //REFLOW
-    regulate_temp(temp_now, temp_next);
-    perc = int((float(temp_now) / float(temp_next)) * 100.00);
-    if (perc >= 100)
-    {
-      state_now = 3;
-      t_solder = millis();
-      perc = 0;
-      temp_next = 0;
-    }
-  }
-  else if (state_now == 3)
-  { //COOLING
-    digitalWrite(solidstate, LOW);
-    time_count = int((t_solder + 60000 - millis()) / 1000);
-    if (time_count <= 0)
-    {
-      state_now = 0;
-    }
-  }
-  else
-  {
-    digitalWrite(solidstate, LOW);
-    time_count = 0;
-  }
-  delay(30);
+  executeActualState();
 }
