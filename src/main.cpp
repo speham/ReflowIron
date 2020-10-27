@@ -109,29 +109,21 @@ int readPotiTemeratur()
 {
   int potiTemperatur = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
 
-  if (potiTemperatur != temp_poti_old)
+  if (potiTemperatur > temp_poti_old + 1 || potiTemperatur < temp_poti_old - 1)
   {
-    long v = millis();
     display.fillScreen(WHITE);
-    display.setTextSize(1);
+    display.setTextColor(BLACK);
+    display.setTextSize(2);
     display.setCursor(X(1, 6), Y(1, 0.1));
     display.println("REFLOW");
     display.setTextSize(2);
-    while (millis() < v + 2000)
-    {
-      yield();
-      potiTemperatur = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
-      if (potiTemperatur > temp_poti_old + 1 || potiTemperatur < temp_poti_old - 1)
-      {
-        display.setCursor(X(2, 3), Y(2, 0.5));
-        display.println(String(potiTemperatur));
-        display.display();
-        temp_poti_old = potiTemperatur;
-        Serial.printf("Neuer Sollwert: %i °C\n", potiTemperatur);
-        v = millis();
-      }
-    }
+    display.setCursor(X(2, 3), Y(2, 0.5));
+    display.println(String(potiTemperatur));
+    display.display();
+
     temp_poti_old = potiTemperatur;
+    Serial.printf("Neuer Sollwert: %i °C\n", potiTemperatur);
+    delay(2000);
   }
 
   return potiTemperatur;
@@ -141,6 +133,7 @@ void refreshDisplay()
 {
   if (millis() > millisDisplayRefresh + 200 || millis() < millisDisplayRefresh)
   {
+    Serial.printf("Measured Temperature: %i\n", temp_now);
     PrintScreen(state[actualState], temp_next, temp_now, time_count, perc);
     millisDisplayRefresh = millis();
   }
@@ -263,9 +256,8 @@ void executeActualState()
       time_count = 0;
       break;
     }
-
-    delay(30);
   }
+  delay(30);
 }
 
 void loop()
