@@ -35,8 +35,15 @@ int time_count = 0;
 int perc = 0;
 int offset = 0;
 
-long t = millis();
+long millisDisplayRefresh = millis();
 long t_solder = millis();
+
+typedef enum
+{
+  NO_CLICK,
+  SHORT_CLICK,
+  LONG_CLICK
+} ButtonClick;
 
 int X(int textgroesse, int n)
 {
@@ -117,8 +124,17 @@ int readPotiTemeratur()
     }
     temp_poti_old = potiTemperatur;
   }
-  
+
   return potiTemperatur;
+}
+
+void refreshDisplay()
+{
+  if (millis() > millisDisplayRefresh + 200 || millis() < millisDisplayRefresh)
+  {
+    PrintScreen(state[state_now], temp_next, temp_now, time_count, perc);
+    millisDisplayRefresh = millis();
+  }
 }
 
 void setup()
@@ -134,60 +150,84 @@ void setup()
   display.display();
 }
 
+ButtonClick detectButtonClick()
+{
+  if (digitalRead(button) == 0)
+  {
+    delay(100);
+    long milSec = millis();
+    while (digitalRead(button) == 0)
+    {
+      yield();
+      if (millis() > milSec + 1500)
+      {
+        return LONG_CLICK;
+      }
+    }
+    return SHORT_CLICK;
+  }
+
+  return NO_CLICK;
+}
+
+void switchOff()
+{
+  Serial.println("Long Button Click detected - Switch OFF now.\n");
+  digitalWrite(solidstate, LOW);
+  state_now = 0;
+  display.fillScreen(WHITE);
+  display.setTextColor(BLACK);
+  display.setTextSize(2);
+  display.setCursor(X(2, 3), Y(2, 0.5));
+  display.println("OFF");
+  display.display();
+  while (digitalRead(button) == 0)
+  {
+    yield();
+    delay(1);
+  }
+}
+
+void nextState()
+{
+
+  t_solder = millis();
+  perc = 0,
+  state_now++;
+  if (state_now == 0)
+    temp_next = 0;
+  else if (state_now == 1)
+    temp_next = temp_preheat;
+  else if (state_now == 2)
+    temp_next = temp_poti;
+  else if (state_now == 3)
+    temp_next = 0;
+  else if (state_now == 4)
+  {
+    state_now = 0;
+    temp_next = 0;
+  }
+  Serial.print("Short Button Click detected - Switch to State ");
+  Serial.println(state[state_now]);
+}
+
 void loop()
 {
   temp_now = thermocouple.readCelsius();
   temp_poti = readPotiTemeratur();
 
-  if (millis() > t + 200 || millis() < t)
+  refreshDisplay();
+
+  ButtonClick clickInfo = detectButtonClick();
+
+  switch (clickInfo)
   {
-    PrintScreen(state[state_now], temp_next, temp_now, time_count, perc);
-    t = millis();
-  }
-
-  if (digitalRead(button) == 0)
-  {
-    delay(100);
-    long c = millis();
-    while (digitalRead(button) == 0)
-    {
-      yield();
-
-      if (millis() > c + 1500)
-      {
-        digitalWrite(solidstate, LOW);
-        state_now = 0;
-        display.fillScreen(WHITE);
-        display.setTextColor(BLACK);
-        display.setTextSize(2);
-        display.setCursor(X(2, 3), Y(2, 0.5));
-        display.println("OFF");
-        display.display();
-        while (digitalRead(button) == 0)
-        {
-          yield();
-          delay(1);
-        }
-        return;
-      }
-    }
-
-    t_solder = millis();
-    perc = 0,
-    state_now++;
-    if (state_now == 0)
-      temp_next = 0;
-    else if (state_now == 1)
-      temp_next = temp_preheat;
-    else if (state_now == 2)
-      temp_next = temp_poti;
-    else if (state_now == 3)
-      temp_next = 0;
-    else if (state_now == 4)
-    {
-      state_now = 0;
-      temp_next = 0;
-    }
+  case LONG_CLICK:
+    switchOff();
+    return;
+  case SHORT_CLICK:
+    nextState();
+    break;
   }
 
   if (state_now == 1)
