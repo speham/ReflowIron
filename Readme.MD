@@ -1,5 +1,6 @@
 # Reflow Löten mit Bügeleisen
 
+siehe auch Make Magazin 5/2000
 
 
 ## Source: https://github.com/vrees/ReflowIron/
