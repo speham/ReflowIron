@@ -283,5 +283,5 @@ void loop()
   executeActualState();
   
   // Needed for MAX6675. Otherwise temperature values does not change
-  delay(2ß0);
+  delay(200);
 }
