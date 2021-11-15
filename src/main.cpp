@@ -107,7 +107,7 @@ void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percent
 
 int readPotiTemeratur()
 {
-  int potiTemperatur = map(analogRead(poti), 1023, 0, temp_preheat, temp_reflow);
+  int potiTemperatur = map(analogRead(poti), 0, 1023, temp_preheat, temp_reflow);
 
   if (potiTemperatur > temp_poti_old + 1 || potiTemperatur < temp_poti_old - 1)
   {
