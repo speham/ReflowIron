@@ -18,6 +18,7 @@ int thermoCS = D7;
 int thermoCLK = D5;
 MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);
 
+const int led = D3;
 const int button = D4;
 const int solidstate = D8;
 const int poti = A0;
@@ -68,10 +69,12 @@ void regulate_temp(int temp, int should)
   if (should <= temp - offset)
   {
     digitalWrite(solidstate, LOW);
+    digitalWrite(led, LOW);    
   }
   else if (should > temp + offset)
   {
     digitalWrite(solidstate, HIGH);
+    digitalWrite(led, HIGH);
   }
 }
 
@@ -146,6 +149,12 @@ void setup()
   pinMode(button, INPUT);
   pinMode(solidstate, OUTPUT);
   digitalWrite(solidstate, LOW);
+  pinMode(led, OUTPUT);
+  digitalWrite(led, LOW);
+  delay(200);
+  digitalWrite(led, HIGH);
+  delay(200);
+  digitalWrite(led, LOW);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
@@ -180,6 +189,7 @@ void switchOff()
 {
   Serial.println("Long Button Click detected - Switch OFF now.\n");
   digitalWrite(solidstate, LOW);
+  digitalWrite(led, LOW);    
   actualState = OFF;
   display.fillScreen(WHITE);
   display.setTextColor(BLACK);
@@ -245,6 +255,7 @@ void executeActualState()
     {
     case COOLING:
       digitalWrite(solidstate, LOW);
+      digitalWrite(led, LOW);    
       time_count = int((t_solder + 60000 - millis()) / 1000);
       if (time_count <= 0)
       {
@@ -253,6 +264,7 @@ void executeActualState()
       break;
     default:
       digitalWrite(solidstate, LOW);
+      digitalWrite(led, LOW);    
       time_count = 0;
       break;
     }
