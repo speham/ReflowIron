@@ -12,6 +12,8 @@
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+bool displayReflowTargetTempChange = true;
+
 
 int thermoDO = D6;
 int thermoCS = D7;
@@ -24,6 +26,7 @@ const int solidstate = D8;
 const int poti = A0;
 const int temp_preheat = 150;
 const int temp_reflow = 240;
+
 
 typedef enum
 {
@@ -80,14 +83,18 @@ void regulate_temp(int temp, int should)
 
 void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percentage)
 {
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println(state);
-  display.setCursor(80, 0);
   String str = String(soll_temp) + " deg";
-  display.println(str);
+  if (!displayReflowTargetTempChange)
+  {
+    display.clearDisplay();
+    display.setTextColor(WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println(state);
+    display.setCursor(80, 0);
+    display.println(str);
+  }
+  
 
   if (tim != 0)
   {
@@ -101,42 +108,56 @@ void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percent
     str = String(percentage) + " %";
     display.println(str);
   }
-  display.setTextSize(2);
-  display.setCursor(30, 22);
-  str = String(ist_temp) + " deg";
-  display.println(str);
-  display.display();
+  
+  if (!displayReflowTargetTempChange)
+  {
+    display.setTextSize(2);
+    display.setCursor(30, 22);
+    str = String(ist_temp) + " deg";
+    display.println(str);
+    display.display();
+  }
 }
 
 int readPotiTemeratur()
-{
+{ 
   int potiTemperatur = map(analogRead(poti), 0, 1023, temp_preheat, temp_reflow);
 
-  if (potiTemperatur > temp_poti_old + 1 || potiTemperatur < temp_poti_old - 1)
+  static long lastPotiTempChange;
+  long now = millis();
+
+  if ((potiTemperatur >= temp_poti_old + 1 || potiTemperatur <= temp_poti_old - 1))
   {
     display.fillScreen(WHITE);
     display.setTextColor(BLACK);
     display.setTextSize(2);
-    display.setCursor(X(1, 6), Y(1, 0.1));
+    display.setCursor(X(1, 10), Y(1, 0.1));
     display.println("REFLOW");
     display.setTextSize(2);
     display.setCursor(X(2, 3), Y(2, 0.5));
     display.println(String(potiTemperatur));
     display.display();
 
-    temp_poti_old = potiTemperatur;
     Serial.printf("Neuer Sollwert: %i °C\n", potiTemperatur);
-    delay(2000);
+    lastPotiTempChange = now;
+    displayReflowTargetTempChange = true;
+    temp_poti_old = potiTemperatur;
+    return potiTemperatur;
   }
-
+  else if (now > lastPotiTempChange + 2000)
+  {
+    displayReflowTargetTempChange = false;
+    return potiTemperatur;
+  }
+  
   return potiTemperatur;
 }
 
 void refreshDisplay()
 {
-  if (millis() > millisDisplayRefresh + 200 || millis() < millisDisplayRefresh)
+  if (millis() > millisDisplayRefresh + 10 || millis() < millisDisplayRefresh)
   {
-    Serial.printf("Measured Temperature: %i\n", temp_now);
+    //Serial.printf("Measured Temperature: %i\n", temp_now);
     PrintScreen(state[actualState], temp_next, temp_now, time_count, perc);
     millisDisplayRefresh = millis();
   }
@@ -273,10 +294,29 @@ void executeActualState()
 
 void loop()
 {
-  temp_now = thermocouple.readCelsius();
-  Serial.printf("2 - %i\n", temp_now);
-  temp_poti = readPotiTemeratur();
+  
+  long now = millis();
+  static long lastTempRead;
+  static int lastTemp;
 
+  if ( now > lastTempRead + 200)            // Needed for MAX6675. Otherwise temperature values does not change
+  {
+    temp_poti = readPotiTemeratur();
+    temp_now = thermocouple.readCelsius();  
+    lastTempRead = now;
+
+    if (lastTemp != temp_now)
+    {
+      Serial.printf("2 - %i\n", temp_now);
+      lastTemp = temp_now;
+      if (temp_now > 1000)
+      {
+        Serial.println("Temperature sensor maybe damaged");
+        temp_now = 1000;
+      }
+    }
+}
+  
   refreshDisplay();
 
   ButtonClick cl = detectButtonClick();
@@ -294,6 +334,4 @@ void loop()
 
   executeActualState();
   
-  // Needed for MAX6675. Otherwise temperature values does not change
-  delay(200);
 }
