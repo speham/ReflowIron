@@ -126,7 +126,7 @@ int readPotiTemeratur()
   static long lastPotiTempChange;
   long now = millis();
 
-  if ((potiTemperatur >= temp_poti_old + 1 || potiTemperatur <= temp_poti_old - 1))
+  if (potiTemperatur >= temp_poti_old + 1 || potiTemperatur <= temp_poti_old - 1)
   {
     display.fillScreen(WHITE);
     display.setTextColor(BLACK);
@@ -187,7 +187,14 @@ ButtonClick detectButtonClick()
   if (digitalRead(button) == 0)
   {
     Serial.println("clicked");
-
+    if (displayReflowTargetTempChange)
+    {
+      displayReflowTargetTempChange =false;
+      Serial.println("Display cleared");
+      display.clearDisplay();
+      display.display();
+    }
+    
     delay(100);
     long milSec = millis();
     while (digitalRead(button) == 0)
@@ -301,7 +308,11 @@ void loop()
 
   if ( now > lastTempRead + 200)            // Needed for MAX6675. Otherwise temperature values does not change
   {
-    temp_poti = readPotiTemeratur();
+    if (actualState == OFF)
+    {
+      temp_poti = readPotiTemeratur();
+    }
+    
     temp_now = thermocouple.readCelsius();  
     lastTempRead = now;
 
