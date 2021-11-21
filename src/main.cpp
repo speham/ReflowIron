@@ -85,6 +85,10 @@ int offset = 0;
 long millisDisplayRefresh = millis();
 long t_solder = millis();
 
+long millisAutomaticPrgStarted;
+int   measurementsPerRun = 120;
+int avgTempsPer25SekArray[120];
+
 int X(int textgroesse, int n)
 {
   return (0.5 * (display.width() - textgroesse * (6 * n - 1))); //end int X
@@ -126,47 +130,70 @@ void regulate_temp(int temp, int should)
   }
 }
 
+void saveMeasurePointsGraph()
+{ 
+  long now = millis();
+  static int measurePointActual = 1;
+
+  if (now - millisAutomaticPrgStarted >= 2500*measurePointActual)
+  {
+    Serial.print("Current Measurement point over time:");
+    Serial.println(measurePointActual);
+    avgTempsPer25SekArray[measurePointActual-1] = temp_now;
+    measurePointActual++;
+  }  
+}
+
 void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percentage)
 {
   String str = String(soll_temp);
-  if (!showPresetSelection)
-  {
-    display.clearDisplay();
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println(state);
-    display.setCursor(90, 0);
-    display.print(str);
-    display.print((char)247);
-    display.println(F("C"));
-
-  }
-  
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println(state);
+  display.setCursor(90, 0);
+  display.print(str);
+  display.print((char)247);
+  display.println(F("C"));
 
   if (tim != 0)
   {
-    display.setCursor(0, 50);
-    str = String(tim) + " sec";
+    display.setCursor(60, 11);
+    str = String(tim) + "sec";
     display.println(str);
   }
   if (percentage != 0)
   {
-    display.setCursor(90, 50);
-    str = String(percentage) + " %";
+    display.setCursor(106, 11);
+    str = String(percentage) + "%";
     display.println(str);
   }
+
+  display.setTextSize(2);
+  display.setCursor(10, 27);
+  str = String(ist_temp);
+  display.print(str);
+  display.print((char)247);
+  display.println(F("C"));
   
-  if (!showPresetSelection)
+  //graph
+  display.setTextSize(0.5);
+  display.setCursor(3,11);
+  display.print((int)profileReflowTemps[profileSelected]);
+  display.print((char)247);
+  display.println(F("C"));
+  display.setCursor(100,54);
+  display.println(F("300s"));
+
+  for (int i = 0; i <= measurementsPerRun; i++)
   {
-    display.setTextSize(3);
-    display.setCursor(20, 25);
-    str = String(ist_temp);
-    display.print(str);
-    display.print((char)247);
-    display.println(F("C"));
-    display.display();
+    display.writePixel(i+2,64-avgTempsPer25SekArray[i]/profileReflowTemps[profileSelected]*54,WHITE);
   }
+
+  display.writeFastVLine(0,10,54,WHITE);
+  display.writeFastHLine(0,63,121,WHITE);
+  display.display();
 }
 
 int readPoti()
@@ -227,7 +254,10 @@ void refreshDisplay()
   if (millis() > millisDisplayRefresh + 100 || millis() < millisDisplayRefresh)
   {
     //Serial.printf("Measured Temperature: %i\n", temp_now);
-    PrintScreen(state[actualState], temp_next, temp_now, time_count, perc);
+    if (!showPresetSelection)
+    {
+      PrintScreen(state[actualState], temp_next, temp_now, time_count, perc);
+    }
     millisDisplayRefresh = millis();
   }
 }
@@ -261,6 +291,10 @@ void setup()
   // Turn the PID on
   reflowOvenPID.SetMode(AUTOMATIC);
   // Proceed to preheat stage
+  for (int i = 0; i <= measurementsPerRun; i++)//clear array for graph
+  {
+    avgTempsPer25SekArray[i] = 0;
+  }
 
 }
 
@@ -351,6 +385,11 @@ void nextState()
     actualState = OFF;
     lastState = COOLING;
     temp_next = 0;
+    for (int i = 0; i <= measurementsPerRun; i++)//clear array for graph
+    {
+      avgTempsPer25SekArray[i] = 0;
+    }
+
     break;
   }
 
@@ -445,6 +484,11 @@ void loop()
     }
   }
 
+  if (actualState != OFF && actualState != STARTING && actualState != COOLING)
+  {
+    saveMeasurePointsGraph();
+  }
+  
   
   refreshDisplay();
 
@@ -464,7 +508,7 @@ void loop()
   executeActualState();
   if (actualState == STARTING)
   {
-    t_solder = millis();
+    millisAutomaticPrgStarted, t_solder = millis();
     temp_next = 0;
     nextState();
   }
