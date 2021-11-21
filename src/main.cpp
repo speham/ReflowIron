@@ -13,21 +13,18 @@
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-bool displayReflowTargetTempChange = true;
+bool showPresetSelection = true;
 
 
-int thermoDO = D6;
-int thermoCS = D7;
-int thermoCLK = D5;
-MAX6675 thermocouple(thermoCLK, thermoCS, thermoDO);
+int thermoDOPin = D6;
+int thermoCSPin = D7;
+int thermoCLKPin = D5;
+MAX6675 thermocouple(thermoCLKPin, thermoCSPin, thermoDOPin);
 
-const int led = D3;
-const int button = D4;
-const int solidstate = D8;
-const int poti = A0;
-const int temp_preheatOne = 90;
-const int temp_preheatTwo = 130;
-const int temp_reflow = 240;
+const int ledPin = D3;
+const int buttonPin = D4;
+const int solidstatePin = D8;
+const int potiPin = A0;
 
 // ***** PID CONTROL VARIABLES *****
 double setpoint;
@@ -57,14 +54,29 @@ typedef enum
   COOLING = 5
 } State, LastState;
 
-int temp_now = 0;
-int temp_next = 0;
-int temp_poti = 0;
-int temp_poti_old = 0;
+int temp_now,temp_next,temp_poti,potiLast = 0;
+
 String state[] = {"OFF", "STARTING", "PREHEATONE","PREHEATTWO", "REFLOW", "COOLING"};
-// int state_now = 0;
 State actualState = OFF;
 LastState lastState = OFF;
+
+//Profiles
+int         profileSelected         = 0;
+String      profileNames[]          = {"Sn42/Bi57.6/Ag0.4", "Standard"};
+const float profilePreHeat1Temps[]  = {90, 150};
+const float profilePreHeat1KP[]     = {15, 15};
+const float profilePreHeat1KI[]     = {0.1, 0.1};
+const float profilePreHeat1KD[]     = {1, 1};
+
+const float profilePreHeat2Temps[]  = {130, 180};
+const float profilePreHeat2KP[]     = {10, 10};
+const float profilePreHeat2KI[]     = {0.1, 0.1};
+const float profilePreHeat2KD[]     = {1, 1};
+
+const float profileReflowTemps[]    = {165, 200};
+const float profileReflowKP[]       = {18, 18};
+const float profileReflowKI[]       = {0.1, 0.11};
+const float profileReflowKD[]       = {1, 1};
 
 int time_count = 0;
 int perc = 0;
@@ -103,21 +115,21 @@ void regulate_temp(int temp, int should)
 
   if (output < millis() - windowStartTime) 
   {
-    digitalWrite(solidstate, LOW);
-    digitalWrite(led, LOW);
+    digitalWrite(solidstatePin, LOW);
+    digitalWrite(ledPin, LOW);
     
   }
   else     
   {
-    digitalWrite(solidstate, HIGH);
-    digitalWrite(led, HIGH);    
+    digitalWrite(solidstatePin, HIGH);
+    digitalWrite(ledPin, HIGH);    
   }
 }
 
 void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percentage)
 {
   String str = String(soll_temp);
-  if (!displayReflowTargetTempChange)
+  if (!showPresetSelection)
   {
     display.clearDisplay();
     display.setTextColor(WHITE);
@@ -145,7 +157,7 @@ void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percent
     display.println(str);
   }
   
-  if (!displayReflowTargetTempChange)
+  if (!showPresetSelection)
   {
     display.setTextSize(3);
     display.setCursor(20, 25);
@@ -157,40 +169,57 @@ void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percent
   }
 }
 
-int readPotiTemeratur()
+int readPoti()
 { 
-  int potiTemperatur = map(analogRead(poti), 0, 1023, temp_preheatTwo-1, temp_reflow);
+  int poti = map(analogRead(potiPin), 0, 1023, 0, 1);
 
-  static long lastPotiTempChange;
+  static long lastPotiChange;
   long now = millis();
 
-  if (potiTemperatur >= temp_poti_old + 2 || potiTemperatur <= temp_poti_old - 2)
+  if (poti >= potiLast + 1 || poti <= potiLast - 1)
   {
     display.fillScreen(WHITE);
     display.setTextColor(BLACK);
-    display.setTextSize(2);
-    display.setCursor(X(1, 10), Y(1, 0.1));
-    display.println("REFLOW");
-    display.setTextSize(3);
-    display.setCursor(20, 25);
-    display.print(String(potiTemperatur));
+    display.setTextSize(1.5);
+    display.setCursor(0, Y(1, 0.1));
+    display.print(String(poti+1));
+    display.print(" - ");
+    display.println(profileNames[poti]);
+    display.writeFastHLine(0,12,128,BLACK);
+
+    Serial.printf("Profile %i selected\n", poti);
+
+    display.setTextSize(1);
+    display.setCursor(5, 25);
+    if (profilePreHeat1Temps[poti] < 100) display.print("Preheat1:  ");
+    else display.print("Preheat1: ");
+    display.print(String(profilePreHeat1Temps[poti]));
     display.print((char)247);
     display.println(F("C"));
-    display.display();
 
-    Serial.printf("Neuer Sollwert: %i °C\n", potiTemperatur);
-    lastPotiTempChange = now;
-    displayReflowTargetTempChange = true;
-    temp_poti_old = potiTemperatur;
-    return potiTemperatur;
+    display.setCursor(5, 35);
+    if (profilePreHeat2Temps[poti] < 100) display.print("Preheat2:  ");
+    else display.print("Preheat2: ");
+    display.print(String(profilePreHeat2Temps[poti]));
+    display.print((char)247);
+    display.println(F("C"));
+
+    display.setCursor(5, 45);
+    display.print("Reflow:   ");
+    display.print(String(profileReflowTemps[poti]));
+    display.print((char)247);
+    display.println(F("C"));
+
+    display.display();
+    lastPotiChange = now;
+    showPresetSelection = true;
+    potiLast = poti;
   }
-  else if (now > lastPotiTempChange + 1500)
+  else if (now > lastPotiChange + 1500)
   {
-    displayReflowTargetTempChange = false;
-    return potiTemperatur;
+    showPresetSelection = false;
   }
-  
-  return potiTemperatur;
+  return poti;
 }
 
 void refreshDisplay()
@@ -207,15 +236,15 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println("setup starts noww ...");
-  pinMode(button, INPUT);
-  pinMode(solidstate, OUTPUT);
-  digitalWrite(solidstate, LOW);
-  pinMode(led, OUTPUT);
-  digitalWrite(led, LOW);
+  pinMode(buttonPin, INPUT);
+  pinMode(solidstatePin, OUTPUT);
+  digitalWrite(solidstatePin, LOW);
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
   delay(200);
-  digitalWrite(led, HIGH);
+  digitalWrite(ledPin, HIGH);
   delay(200);
-  digitalWrite(led, LOW);
+  digitalWrite(ledPin, LOW);
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
@@ -237,12 +266,12 @@ void setup()
 
 ButtonClick detectButtonClick()
 {
-  if (digitalRead(button) == 0)
+  if (digitalRead(buttonPin) == 0)
   {
     Serial.println("clicked");
-    if (displayReflowTargetTempChange)
+    if (showPresetSelection)
     {
-      displayReflowTargetTempChange =false;
+      showPresetSelection =false;
       Serial.println("Display cleared");
       display.clearDisplay();
       display.display();
@@ -250,7 +279,7 @@ ButtonClick detectButtonClick()
     
     delay(200);
     long milSec = millis();
-    while (digitalRead(button) == 0)
+    while (digitalRead(buttonPin) == 0)
     {
       yield();
       if (millis() > milSec + 1500)
@@ -269,17 +298,17 @@ ButtonClick detectButtonClick()
 void switchOff()
 {
   Serial.println("Long Button Click detected - Switch OFF now.\n");
-  digitalWrite(solidstate, LOW);
-  digitalWrite(led, LOW);    
+  digitalWrite(solidstatePin, LOW);
+  digitalWrite(ledPin, LOW);    
   actualState = OFF;
   lastState = OFF;
   display.fillScreen(WHITE);
   display.setTextColor(BLACK);
-  display.setTextSize(2);
+  display.setTextSize(3);
   display.setCursor(X(2, 3), Y(2, 0.5));
   display.println("OFF");
   display.display();
-  while (digitalRead(button) == 0)
+  while (digitalRead(buttonPin) == 0)
   {
     yield();
     delay(1);
@@ -296,22 +325,22 @@ void nextState()
   case OFF:
     actualState = STARTING;
     lastState = OFF;
-    temp_next = temp_preheatOne;
+    temp_next = 0;
     break;
   case STARTING:
     actualState = PREHEATONE;
     lastState = STARTING;
-    temp_next = temp_preheatOne;
+    temp_next = profilePreHeat1Temps[profileSelected];
     break;
   case PREHEATONE:
     actualState = PREHEATTWO;
     lastState = PREHEATONE;
-    temp_next = temp_preheatTwo;
+    temp_next = profilePreHeat2Temps[profileSelected];
     break;
   case PREHEATTWO:
     actualState = REFLOW;
     lastState = PREHEATTWO;
-    temp_next = temp_poti;
+    temp_next = profileReflowTemps[profileSelected];
     break;
   case REFLOW:
     actualState = COOLING;
@@ -334,7 +363,7 @@ void executeActualState()
   switch (actualState)
   {
   case PREHEATONE:
-    Kp=15, Ki=0.1, Kd=1;
+    Kp=profilePreHeat1KP[profileSelected], Ki=profilePreHeat1KI[profileSelected], Kd=profilePreHeat1KD[profileSelected];
     regulate_temp(temp_now, temp_next);
     perc = int((float(temp_now) / float(temp_next)) * 100.00);
     time_count = int((millis() - t_solder) / 1000);
@@ -346,7 +375,7 @@ void executeActualState()
     }
     break;
   case PREHEATTWO:
-    Kp=10, Ki=0.1, Kd=1;
+    Kp=profilePreHeat2KP[profileSelected], Ki=profilePreHeat2KI[profileSelected], Kd=profilePreHeat2KD[profileSelected];
     regulate_temp(temp_now, temp_next);
     perc = int((float(temp_now) / float(temp_next)) * 100.00);
     time_count = int((millis() - t_solder) / 1000);
@@ -358,11 +387,11 @@ void executeActualState()
     }
     break;
   case REFLOW:
-    Kp=17, Ki=0.1, Kd=1;
+    Kp=profileReflowKP[profileSelected], Ki=profileReflowKI[profileSelected], Kd=profileReflowKD[profileSelected];
     regulate_temp(temp_now, temp_next);
     perc = int((float(temp_now) / float(temp_next)) * 100.00);
     time_count = int((millis() - t_solder) / 1000);
-    if (perc == 100)
+    if (perc >= 100)
     {
       nextState();
       time_count = 0;
@@ -371,8 +400,8 @@ void executeActualState()
     break;
     {
     case COOLING:
-      digitalWrite(solidstate, LOW);
-      digitalWrite(led, LOW);    
+      digitalWrite(solidstatePin, LOW);
+      digitalWrite(ledPin, LOW);    
       time_count = int((t_solder + 60000 - millis()) / 1000);
       if (time_count <= 0)
       {
@@ -380,8 +409,8 @@ void executeActualState()
       }
       break;
     default:
-      digitalWrite(solidstate, LOW);
-      digitalWrite(led, LOW);    
+      digitalWrite(solidstatePin, LOW);
+      digitalWrite(ledPin, LOW);    
       time_count = 0;
       break;
     }
@@ -398,7 +427,7 @@ void loop()
   {
     if (actualState == OFF)
     {
-      temp_poti = readPotiTemeratur();
+      profileSelected = readPoti();
     }
     
     temp_now = thermocouple.readCelsius();  
