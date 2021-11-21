@@ -64,17 +64,17 @@ LastState lastState = OFF;
 int         profileSelected         = 0;
 String      profileNames[]          = {"Sn42/Bi57.6/Ag0.4", "Standard"};
 const float profilePreHeat1Temps[]  = {90, 150};
-const float profilePreHeat1KP[]     = {15, 15};
+const float profilePreHeat1KP[]     = {27, 15};
 const float profilePreHeat1KI[]     = {0.1, 0.1};
 const float profilePreHeat1KD[]     = {1, 1};
 
 const float profilePreHeat2Temps[]  = {130, 180};
-const float profilePreHeat2KP[]     = {10, 10};
+const float profilePreHeat2KP[]     = {3, 10};
 const float profilePreHeat2KI[]     = {0.1, 0.1};
 const float profilePreHeat2KD[]     = {1, 1};
 
 const float profileReflowTemps[]    = {165, 200};
-const float profileReflowKP[]       = {18, 18};
+const float profileReflowKP[]       = {10, 18};
 const float profileReflowKI[]       = {0.1, 0.11};
 const float profileReflowKD[]       = {1, 1};
 
