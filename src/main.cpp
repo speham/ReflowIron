@@ -5,6 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "max6675.h"
+#include <PID_v1.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -24,9 +25,20 @@ const int led = D3;
 const int button = D4;
 const int solidstate = D8;
 const int poti = A0;
-const int temp_preheat = 150;
+const int temp_preheatOne = 90;
+const int temp_preheatTwo = 130;
 const int temp_reflow = 240;
 
+// ***** PID CONTROL VARIABLES *****
+double setpoint;
+double input;
+double output;
+unsigned int windowSize = 7000;
+unsigned long windowStartTime;
+unsigned long nextCheck;
+unsigned long nextRead;
+double Kp=13, Ki=0.1, Kd=1;
+PID reflowOvenPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 typedef enum
 {
@@ -38,18 +50,21 @@ typedef enum
 typedef enum
 {
   OFF = 0,
-  PREHEAT = 1,
-  REFLOW = 2,
-  COOLING = 3
-} State;
+  STARTING = 1,
+  PREHEATONE = 2,
+  PREHEATTWO = 3,
+  REFLOW = 4,
+  COOLING = 5
+} State, LastState;
 
 int temp_now = 0;
 int temp_next = 0;
 int temp_poti = 0;
 int temp_poti_old = 0;
-String state[] = {"OFF", "PREHEAT", "REFLOW", "COOLING"};
+String state[] = {"OFF", "STARTING", "PREHEATONE","PREHEATTWO", "REFLOW", "COOLING"};
 // int state_now = 0;
 State actualState = OFF;
+LastState lastState = OFF;
 
 int time_count = 0;
 int perc = 0;
@@ -69,21 +84,39 @@ int Y(int textgroesse, float f)
 
 void regulate_temp(int temp, int should)
 {
-  if (should <= temp - offset)
+  input = temp; 
+  setpoint = should;
+  reflowOvenPID.Compute();
+
+
+  if (millis() - windowStartTime > windowSize)
+  { //time to shift the Relay Window
+    windowStartTime += windowSize;
+  }
+
+  Serial.print("input: ");
+  Serial.print(input);
+  Serial.print(" setpoint: ");
+  Serial.print(setpoint);
+  Serial.print(" output: ");
+  Serial.println(output);
+
+  if (output < millis() - windowStartTime) 
   {
     digitalWrite(solidstate, LOW);
-    digitalWrite(led, LOW);    
+    digitalWrite(led, LOW);
+    
   }
-  else if (should > temp + offset)
+  else     
   {
     digitalWrite(solidstate, HIGH);
-    digitalWrite(led, HIGH);
+    digitalWrite(led, HIGH);    
   }
 }
 
 void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percentage)
 {
-  String str = String(soll_temp) + " deg";
+  String str = String(soll_temp);
   if (!displayReflowTargetTempChange)
   {
     display.clearDisplay();
@@ -91,8 +124,11 @@ void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percent
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println(state);
-    display.setCursor(80, 0);
-    display.println(str);
+    display.setCursor(90, 0);
+    display.print(str);
+    display.print((char)247);
+    display.println(F("C"));
+
   }
   
 
@@ -104,38 +140,42 @@ void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percent
   }
   if (percentage != 0)
   {
-    display.setCursor(80, 50);
+    display.setCursor(90, 50);
     str = String(percentage) + " %";
     display.println(str);
   }
   
   if (!displayReflowTargetTempChange)
   {
-    display.setTextSize(2);
-    display.setCursor(30, 22);
-    str = String(ist_temp) + " deg";
-    display.println(str);
+    display.setTextSize(3);
+    display.setCursor(20, 25);
+    str = String(ist_temp);
+    display.print(str);
+    display.print((char)247);
+    display.println(F("C"));
     display.display();
   }
 }
 
 int readPotiTemeratur()
 { 
-  int potiTemperatur = map(analogRead(poti), 0, 1023, temp_preheat, temp_reflow);
+  int potiTemperatur = map(analogRead(poti), 0, 1023, temp_preheatTwo-1, temp_reflow);
 
   static long lastPotiTempChange;
   long now = millis();
 
-  if (potiTemperatur >= temp_poti_old + 1 || potiTemperatur <= temp_poti_old - 1)
+  if (potiTemperatur >= temp_poti_old + 2 || potiTemperatur <= temp_poti_old - 2)
   {
     display.fillScreen(WHITE);
     display.setTextColor(BLACK);
     display.setTextSize(2);
     display.setCursor(X(1, 10), Y(1, 0.1));
     display.println("REFLOW");
-    display.setTextSize(2);
-    display.setCursor(X(2, 3), Y(2, 0.5));
-    display.println(String(potiTemperatur));
+    display.setTextSize(3);
+    display.setCursor(20, 25);
+    display.print(String(potiTemperatur));
+    display.print((char)247);
+    display.println(F("C"));
     display.display();
 
     Serial.printf("Neuer Sollwert: %i °C\n", potiTemperatur);
@@ -144,7 +184,7 @@ int readPotiTemeratur()
     temp_poti_old = potiTemperatur;
     return potiTemperatur;
   }
-  else if (now > lastPotiTempChange + 2000)
+  else if (now > lastPotiTempChange + 1500)
   {
     displayReflowTargetTempChange = false;
     return potiTemperatur;
@@ -155,7 +195,7 @@ int readPotiTemeratur()
 
 void refreshDisplay()
 {
-  if (millis() > millisDisplayRefresh + 10 || millis() < millisDisplayRefresh)
+  if (millis() > millisDisplayRefresh + 100 || millis() < millisDisplayRefresh)
   {
     //Serial.printf("Measured Temperature: %i\n", temp_now);
     PrintScreen(state[actualState], temp_next, temp_now, time_count, perc);
@@ -180,6 +220,19 @@ void setup()
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
   display.display();
+  
+    // Initialize PID control window starting time
+  windowStartTime = millis();
+  
+  setpoint = 150;
+
+  // Tell the PID to range between 0 and the full window size
+  reflowOvenPID.SetOutputLimits(0, windowSize);
+  //reflowOvenPID.SetSampleTime(1000);
+  // Turn the PID on
+  reflowOvenPID.SetMode(AUTOMATIC);
+  // Proceed to preheat stage
+
 }
 
 ButtonClick detectButtonClick()
@@ -195,7 +248,7 @@ ButtonClick detectButtonClick()
       display.display();
     }
     
-    delay(100);
+    delay(200);
     long milSec = millis();
     while (digitalRead(button) == 0)
     {
@@ -219,6 +272,7 @@ void switchOff()
   digitalWrite(solidstate, LOW);
   digitalWrite(led, LOW);    
   actualState = OFF;
+  lastState = OFF;
   display.fillScreen(WHITE);
   display.setTextColor(BLACK);
   display.setTextSize(2);
@@ -240,19 +294,33 @@ void nextState()
   switch (actualState)
   {
   case OFF:
-    actualState = PREHEAT;
-    temp_next = temp_preheat;
+    actualState = STARTING;
+    lastState = OFF;
+    temp_next = temp_preheatOne;
     break;
-  case PREHEAT:
+  case STARTING:
+    actualState = PREHEATONE;
+    lastState = STARTING;
+    temp_next = temp_preheatOne;
+    break;
+  case PREHEATONE:
+    actualState = PREHEATTWO;
+    lastState = PREHEATONE;
+    temp_next = temp_preheatTwo;
+    break;
+  case PREHEATTWO:
     actualState = REFLOW;
+    lastState = PREHEATTWO;
     temp_next = temp_poti;
     break;
   case REFLOW:
     actualState = COOLING;
+    lastState = REFLOW;
     temp_next = 0;
     break;
   case COOLING:
     actualState = OFF;
+    lastState = COOLING;
     temp_next = 0;
     break;
   }
@@ -265,19 +333,40 @@ void executeActualState()
 {
   switch (actualState)
   {
-  case PREHEAT:
+  case PREHEATONE:
+    Kp=15, Ki=0.1, Kd=1;
     regulate_temp(temp_now, temp_next);
     perc = int((float(temp_now) / float(temp_next)) * 100.00);
-    break;
-  case REFLOW:
-    regulate_temp(temp_now, temp_next);
-    perc = int((float(temp_now) / float(temp_next)) * 100.00);
+    time_count = int((millis() - t_solder) / 1000);
     if (perc >= 100)
     {
-      actualState = COOLING;
-      t_solder = millis();
-      perc = 0;
-      temp_next = 0;
+      nextState();
+      time_count = 0;
+      Serial.println("preheat 1");
+    }
+    break;
+  case PREHEATTWO:
+    Kp=10, Ki=0.1, Kd=1;
+    regulate_temp(temp_now, temp_next);
+    perc = int((float(temp_now) / float(temp_next)) * 100.00);
+    time_count = int((millis() - t_solder) / 1000);
+    if (perc >= 100)
+    {
+      nextState();
+      time_count = 0;
+      Serial.println("preheat 2");
+    }
+    break;
+  case REFLOW:
+    Kp=17, Ki=0.1, Kd=1;
+    regulate_temp(temp_now, temp_next);
+    perc = int((float(temp_now) / float(temp_next)) * 100.00);
+    time_count = int((millis() - t_solder) / 1000);
+    if (perc == 100)
+    {
+      nextState();
+      time_count = 0;
+      Serial.println("reflow");
     }
     break;
     {
@@ -301,7 +390,6 @@ void executeActualState()
 
 void loop()
 {
-  
   long now = millis();
   static long lastTempRead;
   static int lastTemp;
@@ -326,7 +414,8 @@ void loop()
         temp_now = 1000;
       }
     }
-}
+  }
+
   
   refreshDisplay();
 
@@ -344,5 +433,11 @@ void loop()
   }
 
   executeActualState();
+  if (actualState == STARTING)
+  {
+    t_solder = millis();
+    temp_next = 0;
+    nextState();
+  }
   
 }
