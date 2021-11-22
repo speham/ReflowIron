@@ -1,5 +1,5 @@
+#define VERSION "2.5.1"
 #include <Arduino.h>
-
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -20,6 +20,7 @@ int thermoDOPin = D6;
 int thermoCSPin = D7;
 int thermoCLKPin = D5;
 MAX6675 thermocouple(thermoCLKPin, thermoCSPin, thermoDOPin);
+bool errorThermocouple = false;
 
 const int ledPin = D3;
 const int buttonPin = D4;
@@ -62,32 +63,32 @@ LastState lastState = OFF;
 
 //Profiles
 int         profileSelected         = 0;
-String      profileNames[]          = {"Sn42/Bi57.6/Ag0.4", "Standard"};
-const float profilePreHeat1Temps[]  = {90, 150};
-const float profilePreHeat1KP[]     = {27, 15};
-const float profilePreHeat1KI[]     = {0.1, 0.1};
-const float profilePreHeat1KD[]     = {1, 1};
+String      profileNames[]          = {"Sn42/Bi57.6/Ag0.4", "Standard", "Desolder"};
+const float profilePreHeat1Temps[]  = {90, 150, 150};
+const float profilePreHeat1KP[]     = {27, 15, 30};
+const float profilePreHeat1KI[]     = {0.1, 0.1, 0.1};
+const float profilePreHeat1KD[]     = {1, 1, 1};
 
-const float profilePreHeat2Temps[]  = {130, 180};
-const float profilePreHeat2KP[]     = {3, 10};
-const float profilePreHeat2KI[]     = {0.1, 0.1};
-const float profilePreHeat2KD[]     = {1, 1};
+const float profilePreHeat2Temps[]  = {130, 180, 200};
+const float profilePreHeat2KP[]     = {1, 10, 10};
+const float profilePreHeat2KI[]     = {0.1, 0.1, 0.1};
+const float profilePreHeat2KD[]     = {1, 1, 1};
 
-const float profileReflowTemps[]    = {165, 200};
-const float profileReflowKP[]       = {10, 18};
-const float profileReflowKI[]       = {0.1, 0.11};
-const float profileReflowKD[]       = {1, 1};
+const float profileReflowTemps[]    = {165, 200, 220};
+const float profileReflowKP[]       = {10, 18, 10};
+const float profileReflowKI[]       = {0.1, 0.1, 0.1};
+const float profileReflowKD[]       = {1, 1, 1};
 
-int time_count = 0;
-int perc = 0;
-int offset = 0;
+int         time_count              = 0;
+int         perc                    = 0;
+int         offset                  = 0;
 
-long millisDisplayRefresh = millis();
-long t_solder = millis();
+long        millisDisplayRefresh    = millis();
+long        t_solder                = millis();
 
-long millisAutomaticPrgStarted;
-int   measurementsPerRun = 120;
-int avgTempsPer25SekArray[120];
+long        millisAutomaticPrgStarted;
+const int   measurementsPerRun = 120;
+int         avgTempsPer25SekArray[measurementsPerRun];
 
 int X(int textgroesse, int n)
 {
@@ -110,12 +111,12 @@ void regulate_temp(int temp, int should)
     windowStartTime += windowSize;
   }
 
-  Serial.print("input: ");
-  Serial.print(input);
-  Serial.print(" setpoint: ");
-  Serial.print(setpoint);
-  Serial.print(" output: ");
-  Serial.println(output);
+  //Serial.print("input: ");
+  //Serial.print(input);
+  //Serial.print(" setpoint: ");
+  //Serial.print(setpoint);
+  //Serial.print(" output: ");
+  //Serial.println(output);
 
   if (output < millis() - windowStartTime) 
   {
@@ -135,70 +136,112 @@ void saveMeasurePointsGraph()
   long now = millis();
   static int measurePointActual = 1;
 
-  if (now - millisAutomaticPrgStarted >= 2500*measurePointActual)
+  if (now - millisAutomaticPrgStarted >= 2500*measurePointActual && measurePointActual <= measurementsPerRun)
   {
     Serial.print("Current Measurement point over time:");
     Serial.println(measurePointActual);
     avgTempsPer25SekArray[measurePointActual-1] = temp_now;
     measurePointActual++;
   }  
+  if (actualState == OFF)
+  {
+    measurePointActual = 1;
+  }
+  
 }
 
 void PrintScreen(String state, int soll_temp, int ist_temp, int tim, int percentage)
 {
-  String str = String(soll_temp);
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println(state);
-  display.setCursor(90, 0);
-  display.print(str);
-  display.print((char)247);
-  display.println(F("C"));
-
-  if (tim != 0)
+  String str;
+  if (actualState == OFF)   //show startmenue
   {
-    display.setCursor(60, 11);
-    str = String(tim) + "sec";
-    display.println(str);
+    if (errorThermocouple)
+    {
+      display.clearDisplay();
+      display.fillScreen(WHITE);
+      display.setTextColor(BLACK);
+      display.setTextSize(1.2);
+      display.setCursor(5, 2);
+      str = "Temperature sensor    maybe damaged!!";
+      display.println(str);
+    }
+    else
+    {
+      display.clearDisplay();
+      display.fillScreen(WHITE);
+      display.setTextColor(BLACK);
+      display.setTextSize(1);
+      display.setCursor(2, 2);
+      str = "Press button to start  the reflow process";
+      display.println(str);
+      display.setCursor(15, 32);
+      str = "rotate to select      reflow profile";
+      display.println(str);
+
+      display.drawFastHLine(0,54,128,BLACK);
+      display.setCursor(20, 56);
+      display.print("VERSION:");    
+      display.setCursor(80, 56);
+      display.println(VERSION);    
+    }
   }
-  if (percentage != 0)
+  else                      //show progress
   {
-    display.setCursor(106, 11);
-    str = String(percentage) + "%";
-    display.println(str);
+    display.clearDisplay();
+    display.fillScreen(BLACK);
+    display.setTextColor(WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println(state);
+    display.setCursor(90, 0);
+    str = String(soll_temp);
+    display.print(str);
+    display.print((char)247);
+    display.println(F("C"));
+
+    if (tim != 0)
+    {
+      display.setCursor(45, 54);
+      str = String(tim) + "sec";
+      display.println(str);
+    }
+    if (percentage != 0)
+    {
+      display.setCursor(65, 0);
+      str = String(percentage) + "%";
+      display.println(str);
+    }
+
+    display.setTextSize(2);
+    if (ist_temp<100)display.setCursor(65+15, 35);
+    else display.setCursor(65, 35);  
+    str = String(ist_temp);
+    display.print(str);
+    display.print((char)247);
+    display.println(F("C"));
+    
+    //graph
+    display.setTextSize(0.5);
+    display.setCursor(3,11);
+    display.print((int)profileReflowTemps[profileSelected]);
+    display.print((char)247);
+    display.println(F("C"));
+    display.setCursor(100,54);
+    display.println(F("300s"));
+
+    for (int i = 0; i <= measurementsPerRun; i++)
+    {
+      display.writePixel(i+1,64-avgTempsPer25SekArray[i]/profileReflowTemps[profileSelected]*54,WHITE);
+    }
+    display.writeFastVLine(0,10,54,WHITE);
+    display.writeFastHLine(0,63,121,WHITE);
   }
-
-  display.setTextSize(2);
-  display.setCursor(10, 27);
-  str = String(ist_temp);
-  display.print(str);
-  display.print((char)247);
-  display.println(F("C"));
-  
-  //graph
-  display.setTextSize(0.5);
-  display.setCursor(3,11);
-  display.print((int)profileReflowTemps[profileSelected]);
-  display.print((char)247);
-  display.println(F("C"));
-  display.setCursor(100,54);
-  display.println(F("300s"));
-
-  for (int i = 0; i <= measurementsPerRun; i++)
-  {
-    display.writePixel(i+2,64-avgTempsPer25SekArray[i]/profileReflowTemps[profileSelected]*54,WHITE);
-  }
-
-  display.writeFastVLine(0,10,54,WHITE);
-  display.writeFastHLine(0,63,121,WHITE);
   display.display();
 }
 
 int readPoti()
 { 
-  int poti = map(analogRead(potiPin), 0, 1023, 0, 1);
+  int poti = map(analogRead(potiPin), 0, 1023, 0, 2);
 
   static long lastPotiChange;
   long now = millis();
@@ -342,6 +385,12 @@ void switchOff()
   display.setCursor(X(2, 3), Y(2, 0.5));
   display.println("OFF");
   display.display();
+  saveMeasurePointsGraph();//reset saved values for graph
+  for (int i = 0; i <= measurementsPerRun; i++)//clear array for graph
+  {
+    avgTempsPer25SekArray[i] = 0;
+  }
+
   while (digitalRead(buttonPin) == 0)
   {
     yield();
@@ -389,7 +438,6 @@ void nextState()
     {
       avgTempsPer25SekArray[i] = 0;
     }
-
     break;
   }
 
@@ -441,10 +489,15 @@ void executeActualState()
     case COOLING:
       digitalWrite(solidstatePin, LOW);
       digitalWrite(ledPin, LOW);    
-      time_count = int((t_solder + 60000 - millis()) / 1000);
+      time_count = int((t_solder + 180000 - millis()) / 1000);
       if (time_count <= 0)
       {
         actualState = OFF;
+        saveMeasurePointsGraph();
+        for (int i = 0; i <= measurementsPerRun; i++)//clear array for graph
+        {
+          avgTempsPer25SekArray[i] = 0;
+        }
       }
       break;
     default:
@@ -479,12 +532,17 @@ void loop()
       if (temp_now > 1000)
       {
         Serial.println("Temperature sensor maybe damaged");
+        errorThermocouple = true;
         temp_now = 1000;
+      }
+      else if (errorThermocouple)
+      {
+        errorThermocouple = false;
       }
     }
   }
 
-  if (actualState != OFF && actualState != STARTING && actualState != COOLING)
+  if (actualState != OFF && actualState != STARTING)
   {
     saveMeasurePointsGraph();
   }
@@ -508,7 +566,8 @@ void loop()
   executeActualState();
   if (actualState == STARTING)
   {
-    millisAutomaticPrgStarted, t_solder = millis();
+    millisAutomaticPrgStarted = millis(); 
+    t_solder = millisAutomaticPrgStarted;
     temp_next = 0;
     nextState();
   }
