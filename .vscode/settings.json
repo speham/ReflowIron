@@ -12,6 +12,7 @@
         "ostream": "cpp",
         "type_traits": "cpp",
         "typeinfo": "cpp",
-        "random": "cpp"
+        "random": "cpp",
+        "sstream": "cpp"
     }
 }

@@ -22,6 +22,7 @@ int thermoCLKPin = D5;
 MAX6675 thermocouple(thermoCLKPin, thermoCSPin, thermoDOPin);
 bool errorThermocouple = false;
 
+const int fanPin = D0;
 const int ledPin = D3;
 const int buttonPin = D4;
 const int solidstatePin = D8;
@@ -312,6 +313,8 @@ void setup()
   pinMode(buttonPin, INPUT);
   pinMode(solidstatePin, OUTPUT);
   digitalWrite(solidstatePin, LOW);
+  pinMode(fanPin, OUTPUT);
+  digitalWrite(fanPin, LOW);
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
   delay(200);
@@ -450,6 +453,7 @@ void executeActualState()
   switch (actualState)
   {
   case PREHEATONE:
+    digitalWrite(fanPin, HIGH);
     Kp=profilePreHeat1KP[profileSelected], Ki=profilePreHeat1KI[profileSelected], Kd=profilePreHeat1KD[profileSelected];
     regulate_temp(temp_now, temp_next);
     perc = int((float(temp_now) / float(temp_next)) * 100.00);
@@ -489,8 +493,8 @@ void executeActualState()
     case COOLING:
       digitalWrite(solidstatePin, LOW);
       digitalWrite(ledPin, LOW);    
-      time_count = int((t_solder + 180000 - millis()) / 1000);
-      if (time_count <= 0)
+      time_count = int((millis() - t_solder) / 1000);
+      if (temp_now <= 45)
       {
         actualState = OFF;
         saveMeasurePointsGraph();
@@ -504,6 +508,13 @@ void executeActualState()
       digitalWrite(solidstatePin, LOW);
       digitalWrite(ledPin, LOW);    
       time_count = 0;
+      digitalWrite(fanPin, LOW);
+//      actualState = OFF;
+//      saveMeasurePointsGraph();
+//      for (int i = 0; i <= measurementsPerRun; i++)//clear array for graph
+//      {
+//        avgTempsPer25SekArray[i] = 0;
+//      }
       break;
     }
   }
